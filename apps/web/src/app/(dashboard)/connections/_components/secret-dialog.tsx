@@ -23,14 +23,10 @@ import {
 } from "@onecli/ui/components/accordion";
 import { Badge } from "@onecli/ui/components/badge";
 import { createSecret, updateSecret } from "@/lib/actions/secrets";
-
-const detectAnthropicKeyType = (
-  val: string,
-): "api_key" | "oauth_token" | null => {
-  if (val.startsWith("sk-ant-api")) return "api_key";
-  if (val.startsWith("sk-ant-oat")) return "oauth_token";
-  return null;
-};
+import {
+  detectAnthropicAuthMode,
+  looksLikeAnthropicKey,
+} from "@/lib/validations/secret";
 
 type SecretType = "anthropic" | "generic";
 
@@ -267,14 +263,39 @@ export const SecretDialog = ({
                       : "Enter secret value"
                   }
                   value={value}
-                  onChange={(e) => setValue(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setValue(val);
+                    if (type === "anthropic" && !name.trim()) {
+                      const detected = detectAnthropicAuthMode(val);
+                      if (detected === "api-key") setName("Anthropic API Key");
+                      else if (detected === "oauth")
+                        setName("Anthropic OAuth Token");
+                    }
+                  }}
                 />
                 <div className="flex items-center gap-2">
-                  <p className="text-muted-foreground text-xs">
-                    {type === "anthropic"
-                      ? "Paste your API key or OAuth token from the Anthropic Console."
-                      : "Encrypted at rest. You won\u2019t be able to view this value again."}
-                  </p>
+                  {type === "anthropic" &&
+                  value.trim() &&
+                  !looksLikeAnthropicKey(value) ? (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      {detectAnthropicAuthMode(value) !== null ? (
+                        "This key looks incomplete. Make sure you copied the full value."
+                      ) : (
+                        <>
+                          Keys typically start with{" "}
+                          <code className="text-[11px]">sk-ant-api</code> or{" "}
+                          <code className="text-[11px]">sk-ant-oat</code>
+                        </>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      {type === "anthropic"
+                        ? "Paste your API key or OAuth token from the Anthropic Console."
+                        : "Encrypted at rest. You won\u2019t be able to view this value again."}
+                    </p>
+                  )}
                   {type === "anthropic" && <AnthropicKeyBadge value={value} />}
                 </div>
               </div>
@@ -440,7 +461,7 @@ const TypeStep = ({ onSelect }: { onSelect: (type: SecretType) => void }) => (
 );
 
 const AnthropicKeyBadge = ({ value }: { value: string }) => {
-  const detected = detectAnthropicKeyType(value);
+  const detected = detectAnthropicAuthMode(value);
   if (!detected) return null;
 
   return (
@@ -450,12 +471,12 @@ const AnthropicKeyBadge = ({ value }: { value: string }) => {
     >
       <span
         className={
-          detected === "api_key"
+          detected === "api-key"
             ? "bg-brand size-1.5 rounded-full"
             : "bg-blue-500 size-1.5 rounded-full"
         }
       />
-      {detected === "api_key" ? "API Key" : "OAuth Token"}
+      {detected === "api-key" ? "API Key" : "OAuth Token"}
     </Badge>
   );
 };
